@@ -5,7 +5,7 @@ const CONFIG = {
   reps: Number(params.get("reps") || 10),          // 20 conditions x reps (2007: 10)
   practice: 10,
   restEvery: 40,
-  completionCode: "XXXX",                           // set per crowdsourcing job
+  completionCode: "662746",
   datapipeId: params.get("pipe") === "off" ? null : "iUmElGvM1Ott",   // DataPipe (Google Drive); ?pipe=off saves a local CSV instead
   needHalfDeg: 10.8,                                // cue frame edge: (170 + 120) px of 2007 = 10.8 deg from fixation
 };
