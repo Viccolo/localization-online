@@ -8,6 +8,7 @@ const CONFIG = {
   completionCode: "662746",
   datapipeId: params.get("pipe") === "off" ? null : "iUmElGvM1Ott",   // DataPipe (Google Drive); ?pipe=off saves a local CSV instead
   needHalfDeg: 10.8,                                // cue frame edge: (170 + 120) px of 2007 = 10.8 deg from fixation
+  minFitDistMm: 400,                                // card check: the frames must fit at a viewing distance of 400 mm or more
 };
 const DEBUG = params.has("debug");
 const subjectId = Math.random().toString(36).slice(2, 12);
@@ -37,7 +38,7 @@ const jsPsych = initJsPsych({
 });
 jsPsych.data.addProperties({ subject_id: subjectId, soa_list: CONFIG.soas.join(",") });
 
-let frameMs = 1000 / 60, px2deg = null;
+let frameMs = 1000 / 60, px2deg = null, px2mm = null;
 const lockTarget = () => jsPsych.getDisplayElement();
 const requestLock = () => { const el = lockTarget(); if (el.requestPointerLock) el.requestPointerLock(); };
 
@@ -60,8 +61,8 @@ timeline.push({
 
 timeline.push({ type: jsPsychFullscreen, fullscreen_mode: true, message: TEXT.fullscreen, button_label: TEXT.fullscreen_button });
 
-// for testing only: ?px2deg=30 skips the card and blind-spot measurements
-if (params.get("px2deg")) px2deg = Number(params.get("px2deg"));
+// for testing only: ?px2deg=30 (and optionally &px2mm=4) skips the card and blind-spot measurements
+if (params.get("px2deg")) { px2deg = Number(params.get("px2deg")); px2mm = Number(params.get("px2mm")) || null; }
 else timeline.push({
   type: jsPsychVirtualChinrest,
   blindspot_reps: DEBUG ? 1 : 5,
@@ -73,17 +74,26 @@ else timeline.push({
   viewing_distance_report: TEXT.chinrest_report,
   redo_measurement_button_label: TEXT.chinrest_redo,
   blindspot_done_prompt: TEXT.chinrest_ok,
-  on_finish: (d) => { px2deg = d.px2deg; },
+  on_finish: (d) => { px2deg = d.px2deg; px2mm = d.px2mm; },
 });
 
-// stop if the cue frames do not fit on the screen
+// card check: stop only if the frames would not fit even at minFitDistMm (physical screen too small).
+// If the blind-spot distance makes the frames too large, the stimuli are shrunk to fit and the trial data are flagged.
 timeline.push({
   timeline: [{ type: jsPsychHtmlKeyboardResponse, stimulus: TEXT.too_small, choices: "NO_KEYS",
     on_load: () => jsPsych.abortExperiment(TEXT.too_small) }],
   conditional_function: () => {
-    const fits = DEBUG || Math.min(window.innerWidth, window.innerHeight) / 2 >= CONFIG.needHalfDeg * px2deg;
-    jsPsych.data.addProperties({ fits_screen: fits });
-    return !fits;
+    const halfPx = Math.min(window.innerWidth, window.innerHeight) / 2;
+    const fitDistMm = px2mm ? halfPx / px2mm / Math.tan(CONFIG.needHalfDeg * Math.PI / 180) : null;
+    const cardOk = DEBUG || fitDistMm === null || fitDistMm >= CONFIG.minFitDistMm;
+    const fits = halfPx >= CONFIG.needHalfDeg * px2deg;
+    const measured = px2deg;
+    if (cardOk && !fits) px2deg = halfPx / CONFIG.needHalfDeg;
+    jsPsych.data.addProperties({
+      px2deg_measured: measured, px2deg_used: px2deg, half_px: halfPx, fit_dist_mm: fitDistMm,
+      card_ok: cardOk, fits_screen: fits, shrunk: cardOk && !fits,
+    });
+    return !cardOk;
   },
 });
 
